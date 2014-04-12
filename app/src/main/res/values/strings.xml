@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">test</string>
+    <string name="app_id">8BEF38F1</string>
+    <string name="namespace">urn:x-cast:com.example.test.app</string>
+    <string name="hello_world">Hello world!</string>
+    <string name="message_to_cast">flap</string>
+    <string name="media_route_menu_title">flap on&#8230;</string>
+    <string name="instructions">flap instructions</string>
+
+</resources>
