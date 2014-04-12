@@ -33,7 +33,7 @@ import com.google.android.gms.common.GooglePlayServicesClient;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
-
+//nate was here
 
 public class MainActivity extends ActionBarActivity {
 
