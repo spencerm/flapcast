@@ -7,8 +7,8 @@
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="modules">
           <set>
-            <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/app" />
+            <option value="C:\Users\Stark\Documents\GitHub\flapcast" />
+            <option value="C:\Users\Stark\Documents\GitHub\flapcast\app" />
           </set>
         </option>
       </GradleProjectSettings>
