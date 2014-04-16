@@ -2,10 +2,13 @@ package com.example.test.app;
 
 import java.io.IOException;
 
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.drawable.ColorDrawable;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorManager;
 import android.os.Bundle;
-import android.speech.RecognizerIntent;
 import android.support.v4.view.MenuItemCompat;
 import android.support.v7.app.ActionBar;
 import android.support.v7.app.ActionBarActivity;
@@ -29,17 +32,19 @@ import com.google.android.gms.cast.Cast.MessageReceivedCallback;
 import com.google.android.gms.cast.CastDevice;
 import com.google.android.gms.cast.CastMediaControlIntent;
 import com.google.android.gms.common.ConnectionResult;
-import com.google.android.gms.common.GooglePlayServicesClient;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.common.api.Status;
+
+import android.hardware.SensorEventListener;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorManager;
 //nate was here
 
-public class MainActivity extends ActionBarActivity {
+public class MainActivity extends ActionBarActivity implements SensorEventListener {
 
     private static final String TAG = MainActivity.class.getSimpleName();
-
-//    private static final int REQUEST_CODE = 1;
 
     private MediaRouter mMediaRouter;
     private MediaRouteSelector mMediaRouteSelector;
@@ -55,31 +60,38 @@ public class MainActivity extends ActionBarActivity {
     private String mSessionId;
 
     private int nFlaps;
+    private TextView tView;
+    private SensorManager senSensorManager;
+    private Sensor senAccelerometer;
+    private long lastUpdate = 0;
+    private float last_x, last_y, last_z;
+    private static final int SHAKE_THRESHOLD = 600;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         ActionBar actionBar = getSupportActionBar();
-        actionBar.setBackgroundDrawable(new ColorDrawable(
-                android.R.color.transparent));
+        actionBar.setBackgroundDrawable(new ColorDrawable(android.R.color.transparent));
 
-        final TextView t = (TextView)findViewById(R.id.flaps);
-        final Button b = (Button)findViewById(R.id.flapButton);
+        senSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        senAccelerometer = senSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        senSensorManager.registerListener(this, senAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
+
+        tView = (TextView)findViewById(R.id.flaps);
+        Button b = (Button)findViewById(R.id.flapButton);
         b.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 int flapin = addFlaps(1);
-                t.setText("" + flapin);
+                tView.setText("" + flapin);
                 sendMessage("" + flapin);
             }
         });
 
         mMediaRouter = MediaRouter.getInstance(getApplicationContext());
-        mMediaRouteSelector = new MediaRouteSelector.Builder()
-                .addControlCategory(
-                        CastMediaControlIntent.categoryForCast(getResources()
+        mMediaRouteSelector = new MediaRouteSelector.Builder().addControlCategory(CastMediaControlIntent.categoryForCast(getResources()
                                 .getString(R.string.app_id))).build();
         mMediaRouterCallback = new MyMediaRouterCallback();
     }
@@ -94,8 +106,7 @@ public class MainActivity extends ActionBarActivity {
         super.onCreateOptionsMenu(menu);
         getMenuInflater().inflate(R.menu.main, menu);
         MenuItem mediaRouteMenuItem = menu.findItem(R.id.media_route_menu_item);
-        MediaRouteActionProvider mediaRouteActionProvider = (MediaRouteActionProvider) MenuItemCompat
-                .getActionProvider(mediaRouteMenuItem);
+        MediaRouteActionProvider mediaRouteActionProvider = (MediaRouteActionProvider) MenuItemCompat.getActionProvider(mediaRouteMenuItem);
         // Set the MediaRouteActionProvider selector for device discovery.
         mediaRouteActionProvider.setRouteSelector(mMediaRouteSelector);
         return true;
@@ -113,14 +124,12 @@ public class MainActivity extends ActionBarActivity {
 //        return super.onOptionsItemSelected(item);
 //    }
 
-
-
     @Override
     protected void onResume() {
         super.onResume();
+        senSensorManager.registerListener(this, senAccelerometer, SensorManager.SENSOR_DELAY_NORMAL);
         // Start media router discovery
-        mMediaRouter.addCallback(mMediaRouteSelector, mMediaRouterCallback,
-                MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN);
+        mMediaRouter.addCallback(mMediaRouteSelector, mMediaRouterCallback, MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN);
     }
 
     @Override
@@ -129,6 +138,7 @@ public class MainActivity extends ActionBarActivity {
             // End media router discovery
             mMediaRouter.removeCallback(mMediaRouterCallback);
         }
+        senSensorManager.unregisterListener(this);
         super.onPause();
     }
 
@@ -138,7 +148,35 @@ public class MainActivity extends ActionBarActivity {
         super.onDestroy();
     }
 
+    @Override
+    public void onSensorChanged(SensorEvent sensorEvent) {
+        Sensor mySensor = sensorEvent.sensor;
+        if (mySensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            long curTime = System.currentTimeMillis();
+            if ((curTime - lastUpdate) > 100) {
+                float x = sensorEvent.values[0];
+                float y = sensorEvent.values[1];
+                float z = sensorEvent.values[2];
+                long diffTime = (curTime - lastUpdate);
+                float speed = Math.abs(x + y + z - last_x - last_y - last_z)/ diffTime * 10000;
+                lastUpdate = curTime;
 
+                if (speed > SHAKE_THRESHOLD) {
+                    int flapin = addFlaps(1);
+                    tView.setText("" + flapin);
+                    sendMessage("" + flapin);
+                }
+                last_x = x;
+                last_y = y;
+                last_z = z;
+            }
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int i) {
+
+    }
 
 
     /**
@@ -175,7 +213,6 @@ public class MainActivity extends ActionBarActivity {
                     Log.d(TAG, "application has stopped");
                     teardown();
                 }
-
             };
             // Connect to Google Play services
             mConnectionCallbacks = new ConnectionCallbacks();
@@ -232,64 +269,58 @@ public class MainActivity extends ActionBarActivity {
                 } else {
                     // Launch the receiver app
                     Cast.CastApi
-                            .launchApplication(mApiClient,
-                                    getString(R.string.app_id), false)
-                            .setResultCallback(
-                                    new ResultCallback<Cast.ApplicationConnectionResult>() {
-                                        @Override
-                                        public void onResult(
-                                                ApplicationConnectionResult result) {
-                                            Status status = result.getStatus();
-                                            Log.d(TAG,
-                                                    "ApplicationConnectionResultCallback.onResult: statusCode"
-                                                            + status.getStatusCode());
-                                            if (status.isSuccess()) {
-                                                ApplicationMetadata applicationMetadata = result
-                                                        .getApplicationMetadata();
-                                                mSessionId = result
-                                                        .getSessionId();
-                                                String applicationStatus = result
-                                                        .getApplicationStatus();
-                                                boolean wasLaunched = result
-                                                        .getWasLaunched();
-                                                Log.d(TAG,
-                                                        "application name: "
-                                                                + applicationMetadata
-                                                                .getName()
-                                                                + ", status: "
-                                                                + applicationStatus
-                                                                + ", sessionId: "
-                                                                + mSessionId
-                                                                + ", wasLaunched: "
-                                                                + wasLaunched);
-                                                mApplicationStarted = true;
+                        .launchApplication(mApiClient,getString(R.string.app_id), false)
+                        .setResultCallback(
+                            new ResultCallback<Cast.ApplicationConnectionResult>() {
+                                @Override
+                                public void onResult(ApplicationConnectionResult result) {
+                                    Status status = result.getStatus();
+                                    Log.d(TAG,
+                                        "ApplicationConnectionResultCallback.onResult: statusCode"
+                                            + status.getStatusCode());
+                                    if (status.isSuccess()) {
+                                        ApplicationMetadata applicationMetadata = result
+                                            .getApplicationMetadata();
+                                        mSessionId = result.getSessionId();
+                                        String applicationStatus = result.getApplicationStatus();
+                                        boolean wasLaunched = result.getWasLaunched();
+                                        Log.d(TAG,
+                                            "application name: "
+                                                + applicationMetadata
+                                                .getName()
+                                                + ", status: "
+                                                + applicationStatus
+                                                + ", sessionId: "
+                                                + mSessionId
+                                                + ", wasLaunched: "
+                                                + wasLaunched);
+                                        mApplicationStarted = true;
 
-                                                // Create the custom message
-                                                // channel
-                                                mHelloWorldChannel = new HelloWorldChannel();
-                                                try {
-                                                    Cast.CastApi
-                                                            .setMessageReceivedCallbacks(
-                                                                    mApiClient,
-                                                                    mHelloWorldChannel
-                                                                            .getNamespace(),
-                                                                    mHelloWorldChannel);
-                                                } catch (IOException e) {
-                                                    Log.e(TAG,
-                                                            "Exception while creating channel",
-                                                            e);
-                                                }
-
-                                                // set the initial instructions
-                                                // on the receiver
-                                                sendMessage(getString(R.string.instructions));
-                                            } else {
-                                                Log.e(TAG,
-                                                        "application could not launch");
-                                                teardown();
-                                            }
+                                        // Create the custom message
+                                        // channel
+                                        mHelloWorldChannel = new HelloWorldChannel();
+                                        try {
+                                            Cast.CastApi
+                                                .setMessageReceivedCallbacks(
+                                                    mApiClient,
+                                                    mHelloWorldChannel.getNamespace(),
+                                                    mHelloWorldChannel);
+                                        } catch (IOException e) {
+                                            Log.e(TAG,
+                                                "Exception while creating channel",
+                                                e);
                                         }
-                                    });
+
+                                        // set the initial instructions
+                                        // on the receiver
+                                        sendMessage(getString(R.string.instructions));
+                                    } else {
+                                        Log.e(TAG,
+                                            "application could not launch");
+                                        teardown();
+                                    }
+                                }
+                            });
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Failed to launch application", e);
@@ -306,12 +337,10 @@ public class MainActivity extends ActionBarActivity {
     /**
      * Google Play services callbacks
      */
-    private class ConnectionFailedListener implements
-            GoogleApiClient.OnConnectionFailedListener {
+    private class ConnectionFailedListener implements GoogleApiClient.OnConnectionFailedListener {
         @Override
         public void onConnectionFailed(ConnectionResult result) {
             Log.e(TAG, "onConnectionFailed ");
-
             teardown();
         }
     }
@@ -328,8 +357,8 @@ public class MainActivity extends ActionBarActivity {
                         Cast.CastApi.stopApplication(mApiClient, mSessionId);
                         if (mHelloWorldChannel != null) {
                             Cast.CastApi.removeMessageReceivedCallbacks(
-                                    mApiClient,
-                                    mHelloWorldChannel.getNamespace());
+                                mApiClient,
+                                mHelloWorldChannel.getNamespace());
                             mHelloWorldChannel = null;
                         }
                     } catch (IOException e) {
@@ -355,15 +384,15 @@ public class MainActivity extends ActionBarActivity {
         if (mApiClient != null && mHelloWorldChannel != null) {
             try {
                 Cast.CastApi.sendMessage(mApiClient,
-                        mHelloWorldChannel.getNamespace(), message)
-                        .setResultCallback(new ResultCallback<Status>() {
-                            @Override
-                            public void onResult(Status result) {
-                                if (!result.isSuccess()) {
-                                    Log.e(TAG, "Sending message failed");
-                                }
+                    mHelloWorldChannel.getNamespace(), message)
+                    .setResultCallback(new ResultCallback<Status>() {
+                        @Override
+                        public void onResult(Status result) {
+                            if (!result.isSuccess()) {
+                                Log.e(TAG, "Sending message failed");
                             }
-                        });
+                        }
+                    });
             } catch (Exception e) {
                 Log.e(TAG, "Exception while sending message", e);
             }
@@ -388,8 +417,7 @@ public class MainActivity extends ActionBarActivity {
          * Receive message from the receiver app
          */
         @Override
-        public void onMessageReceived(CastDevice castDevice, String namespace,
-                                      String message) {
+        public void onMessageReceived(CastDevice castDevice, String namespace, String message) {
             Log.d(TAG, "onMessageReceived: " + message);
         }
 
